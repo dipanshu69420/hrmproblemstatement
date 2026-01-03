@@ -17,33 +17,27 @@ def profile_card(title, data_dict):
     )
 
 
+from dash import html
+
 def employee_profile_layout(profile):
     if not profile:
-        return html.Div("Select an employee to view profile")
+        return html.Div("No profile data found")
 
     return html.Div(
-        style={"display": "flex", "gap": "20px"},
+        style={
+            "padding": "20px",
+            "maxWidth": "600px",
+            "border": "1px solid #ddd",
+            "borderRadius": "8px",
+            "boxShadow": "0 2px 6px rgba(0,0,0,0.1)"
+        },
         children=[
-            html.Div(
-                style={"width": "25%"},
-                children=[
-                    html.Img(
-                        src=profile["profile_pic"],
-                        style={"width": "100%", "borderRadius": "8px"}
-                    ),
-                ]
-            ),
-            html.Div(
-                style={"flex": 1},
-                children=[
-                    profile_card("Personal Details", profile["personal"]),
-                    profile_card("Job Details", profile["job"]),
-                    profile_card("Salary Structure", profile["salary"]),
-                    profile_card(
-                        "Documents",
-                        {str(i+1): d for i, d in enumerate(profile["documents"])}
-                    )
-                ]
-            )
+            html.H3(profile["person_name"]),
+
+            html.P(f"Username: {profile['username']}"),
+            html.P(f"Role: {profile['role']}"),
+            html.P(f"Mobile: {profile.get('mobile_no', '-') }"),
+            html.P(f"Email: {profile.get('email', '-') }"),
+            html.P(f"Monthly Salary: ₹{profile.get('monthly_salary', '-')}")
         ]
     )

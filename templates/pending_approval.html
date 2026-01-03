@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Approval Pending</title>
+    <style>
+        body {
+            font-family: Arial;
+            background: #f8f9fa;
+            display: flex;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+        }
+        .card {
+            background: white;
+            padding: 40px;
+            width: 420px;
+            text-align: center;
+            border-radius: 8px;
+            box-shadow: 0 0 12px rgba(0,0,0,0.1);
+        }
+        h2 { color: #dc3545; }
+        p { margin-top: 15px; }
+        a {
+            display: inline-block;
+            margin-top: 20px;
+            color: white;
+            background: #dc3545;
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>Account Pending Approval</h2>
+    <p>Your account is awaiting HR approval.</p>
+
+    <form action="/logout">
+    <button type="submit">Logout</button>
+    </form>
+</div>
+</body>
+</html>

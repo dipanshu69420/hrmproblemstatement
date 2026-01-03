@@ -1,0 +1,4 @@
+from werkzeug.security import check_password_hash
+
+hash_val = "$b09bde36b983c90b0fca69f8521be17e3582f2b3bee1f62954828e109cd80301da1cb4cec9adcfad8b9198662890b5cea28a7a82df14563a9d0d77904f9dc402"
+print(check_password_hash(hash_val, "admin@123"))
