@@ -268,10 +268,6 @@ current_month = today.month
 
 month_options = [{'label': calendar.month_name[i], 'value': i} for i in range(1, 13)]
 year_options_default = [{'label': str(y), 'value': y} for y in range(current_year - 2, current_year + 2)]
-app.layout = get_dashboard_layout(
-    role=DEFAULT_ROLE,
-    username=DEFAULT_USERNAME
-)
 
 def get_dashboard_layout(role='employee', username='User'):
     if role == 'admin':
@@ -483,6 +479,11 @@ def get_dashboard_layout(role='employee', username='User'):
         
         dcc.Tabs(id='main-tabs', value='tab-dashboard', style={'height': '40px'}, children=tabs_children)
     ])
+    
+app.layout = get_dashboard_layout(
+    role=DEFAULT_ROLE,
+    username=DEFAULT_USERNAME
+)
 
 @app.callback(Output('data-store', 'data'),
               [Input('interval-component', 'n_intervals')])
@@ -507,12 +508,9 @@ def update_employee_store(n_interval, n_save, n_add):
      Output('list-employee-names', 'children')],
     [Input('data-store', 'data')],
 )
-def update_dropdowns(json_data, session_data):
-    user_role = 'employee'
-    user_name = ''
-    if session_data:
-        user_role = DEFAULT_ROLE
-        user_name = DEFAULT_USERNAME
+def update_dropdowns(json_data):
+    user_role = DEFAULT_ROLE
+    user_name = DEFAULT_USERNAME
     if user_role == 'employee':
         forced_option = [{'label': user_name, 'value': user_name}]
         year_options = year_options_default
