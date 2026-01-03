@@ -296,14 +296,19 @@ year_options_default = [{'label': str(y), 'value': y} for y in range(current_yea
 def serve_layout():
     user = session.get("user")
     if not user:
-        return html.Div(
-            "Unauthorized. Please login.",
-            style={"padding": "20px", "color": "red"}
+        return html.Div("Unauthorized")
+
+    return html.Div([
+        dcc.Store(
+            id="session-store",
+            data=user
+        ),
+        get_dashboard_layout(
+            role=user["role"],
+            username=user["name"]
         )
-    return get_dashboard_layout(
-        role=user["role"],
-        username=user["name"]
-    )
+    ])
+
 
 app.layout = serve_layout
 
@@ -446,42 +451,119 @@ def get_dashboard_layout(role='employee', username='User'):
             style={'padding': '0px', 'line-height': '40px'},
             selected_style={'padding': '0px', 'line-height': '40px'},
             children=[
-                html.Div(style={'padding': '20px'}, children=[
-                    html.H3("Apply for Leave"),
+                html.Div(
+                    style={
+                        'padding': '20px',
+                        'maxWidth': '800px',
+                        'margin': '0 auto'
+                    },
+                    children=[
 
-                    dcc.DatePickerRange(
-                        id='leave-date-range',
-                        display_format='DD-MM-YYYY'
-                    ),
+                        html.H3("Apply for Leave", style={'marginBottom': '15px'}),
 
-                    dcc.Textarea(
-                        id='leave-reason',
-                        placeholder='Reason for leave',
-                        style={'width': '100%', 'marginTop': '10px'}
-                    ),
+                        html.Label("Leave Type", style={'fontWeight': 'bold'}),
+                        dcc.Dropdown(
+                            id='leave-type',
+                            options=[
+                                {'label': 'Paid Leave', 'value': 'Paid'},
+                                {'label': 'Sick Leave', 'value': 'Sick'},
+                                {'label': 'Unpaid Leave', 'value': 'Unpaid'},
+                            ],
+                            placeholder="Select leave type",
+                            clearable=False
+                        ),
 
-                    html.Button('Submit Leave', id='btn-apply-leave'),
-                    html.Div(id='leave-status', style={'marginTop': '10px'}),
+                        html.Br(),
 
-                    html.Hr(),
+                        html.Label("Leave Duration", style={'fontWeight': 'bold'}),
+                        dcc.DatePickerRange(
+                            id='leave-date-range',
+                            display_format='DD-MM-YYYY',
+                            minimum_nights=0,
+                            style={'width': '100%'}
+                        ),
 
-                    html.H4("My Leave Requests"),
-                    dash_table.DataTable(
-                        id='my-leave-table',
-                        columns=[
-                            {'name': 'From', 'id': 'from_date'},
-                            {'name': 'To', 'id': 'to_date'},
-                            {'name': 'Reason', 'id': 'reason'},
-                            {'name': 'Status', 'id': 'status'},
-                        ],
-                        data=[],
-                        style_cell={'textAlign': 'left'}
-                    )
-                ])
+                        html.Br(), html.Br(),
+
+                        html.Label("Reason / Remarks", style={'fontWeight': 'bold'}),
+                        dcc.Textarea(
+                            id='leave-reason',
+                            placeholder='Enter reason for leave',
+                            style={
+                                'width': '100%',
+                                'height': '90px',
+                                'resize': 'vertical'
+                            }
+                        ),
+
+                        html.Br(),
+
+                        html.Button(
+                            'Submit Leave Request',
+                            id='btn-apply-leave',
+                            n_clicks=0,
+                            style={
+                                'marginTop': '10px',
+                                'backgroundColor': '#007bff',
+                                'color': 'white',
+                                'border': 'none',
+                                'padding': '10px 20px',
+                                'fontSize': '15px',
+                                'cursor': 'pointer',
+                                'borderRadius': '4px'
+                            }
+                        ),
+
+                        html.Div(
+                            id='leave-status',
+                            style={
+                                'marginTop': '12px',
+                                'fontWeight': 'bold'
+                            }
+                        ),
+
+                        html.Hr(style={'margin': '30px 0'}),
+
+                        html.H4("My Leave Requests"),
+
+                        dash_table.DataTable(
+                            id='my-leave-table',
+                            columns=[
+                                {'name': 'Type', 'id': 'leave_type'},
+                                {'name': 'From', 'id': 'from_date'},
+                                {'name': 'To', 'id': 'to_date'},
+                                {'name': 'Reason', 'id': 'reason'},
+                                {'name': 'Status', 'id': 'status'},
+                                {'name': 'Admin Comment', 'id': 'admin_comment'},
+                            ],
+                            data=[],
+                            page_size=8,
+                            style_table={'overflowX': 'auto'},
+                            style_cell={
+                                'textAlign': 'left',
+                                'padding': '8px',
+                                'fontSize': '14px'
+                            },
+                            style_header={
+                                'backgroundColor': '#f1f1f1',
+                                'fontWeight': 'bold'
+                            },
+                            style_data_conditional=[
+                                {
+                                    'if': {'filter_query': '{status} = "Approved"'},
+                                    'backgroundColor': '#e6fffa'
+                                },
+                                {
+                                    'if': {'filter_query': '{status} = "Rejected"'},
+                                    'backgroundColor': '#ffe6e6'
+                                }
+                            ]
+                        )
+                    ]
+                )
             ]
         )
         tabs_children.append(leave_tab)
-
 
     if role == 'admin':
         salary_tab = dcc.Tab(label='Salary Management', value='tab-salary',
@@ -546,12 +628,20 @@ def get_dashboard_layout(role='employee', username='User'):
                         data=[],
                         style_cell={'textAlign': 'center'},
                     ),
+
                     html.Hr(),
                     html.H3("Leave Approval"),
+
+                    dcc.Textarea(
+                        id='leave-admin-comment',
+                        placeholder='Admin comment (optional)',
+                        style={'width': '100%', 'marginBottom': '10px'}
+                    ),
+
                     dash_table.DataTable(
                         id='leave-approval-table',
                         columns=[
-                            {'name': 'Employee', 'id': 'employee'},
+                            {'name': 'Employee', 'id': 'employee_email'},
                             {'name': 'From', 'id': 'from_date'},
                             {'name': 'To', 'id': 'to_date'},
                             {'name': 'Reason', 'id': 'reason'},
@@ -566,6 +656,7 @@ def get_dashboard_layout(role='employee', username='User'):
                 ])
             ]
         )
+
         tabs_children.append(approval_tab)
 
     hidden_admin_components = []
@@ -792,7 +883,19 @@ def update_day_graph(json_data, holiday_data, selected_date, selected_employee):
     indicator_df = day_filtered_df
     present_list_items = []
     absent_list_items = []
-
+    leave_map = fetch_approved_leaves()
+    if selected_employee in leave_map and selected_date in leave_map[selected_employee]:
+        fig_day_indicator = {
+            "layout": {
+                "annotations": [{
+                    "text": "ON LEAVE",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 28, "color": "blue"}
+                }]
+            }
+        }
     if selected_employee and selected_employee != 'all':
         indicator_df = day_filtered_df[day_filtered_df['person_name'] == selected_employee]
         if indicator_df.empty:
@@ -1009,60 +1112,27 @@ def update_month_graphs(json_data, holiday_data, selected_month, selected_year, 
     return fig_gauge, fig_att_gauge, fig_pie_hours, table_data, table_columns, style_data_conditional
 
 @app.callback(
-    Output('leave-status', 'children'),
-    Input('btn-apply-leave', 'n_clicks'),
-    State('leave-date-range', 'start_date'),
-    State('leave-date-range', 'end_date'),
-    State('leave-reason', 'value'),
-    prevent_initial_call=True
-)
-def apply_leave(n, start, end, reason):
-    if not all([start, end, reason]):
-        return "Please fill all fields"
-
-    user = session.get("user")
-    if not user:
-        return "Session expired"
-
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        INSERT INTO leave_requests (employee_name, from_date, to_date, reason)
-        VALUES (%s, %s, %s, %s)
-    """, (user['name'], start, end, reason))
-
-    conn.commit()
-    conn.close()
-
-    return "Leave request submitted"
-
-@app.callback(
     Output('my-leave-table', 'data'),
-    Input('btn-apply-leave', 'n_clicks'),
-    Input('main-tabs', 'value')
+    [Input('btn-apply-leave', 'n_clicks'),
+     Input('main-tabs', 'value')],
+    State('session-store', 'data')
 )
-def load_my_leaves(_, tab):
-    if tab != 'tab-leave':
-        return []
-
-    user = session.get("user")
+def load_my_leaves(n, tab, user):
     if not user:
         return []
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    cur = conn.cursor(dictionary=True)
 
-    cursor.execute("""
-        SELECT from_date, to_date, reason, status
+    cur.execute("""
+        SELECT leave_type, from_date, to_date, reason, status, admin_comment
         FROM leave_requests
-        WHERE employee_name = %s
+        WHERE employee_email=%s
         ORDER BY created_at DESC
-    """, (user['name'],))
+    """, (user["email"],))
 
-    rows = cursor.fetchall()
+    rows = cur.fetchall()
     conn.close()
-
     return rows
 
 @app.callback(
@@ -1070,63 +1140,114 @@ def load_my_leaves(_, tab):
     Input('main-tabs', 'value')
 )
 def load_pending_leaves(tab):
-    if tab != 'tab-approvals':
+    if tab != 'tab-approval':
         return []
 
     conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("""
-        SELECT id,
-               employee_name AS employee,
-               from_date,
-               to_date,
-               reason
+    df = pd.read_sql("""
+        SELECT id, employee_email, from_date, to_date, reason
         FROM leave_requests
-        WHERE status = 'pending'
-    """)
-
-    rows = cursor.fetchall()
+        WHERE status='pending'
+    """, conn)
     conn.close()
 
-    for r in rows:
-        r['approve'] = f"[Approve](approve:{r['id']})"
-        r['reject'] = f"[Reject](reject:{r['id']})"
+    df['approve'] = df['id'].apply(lambda x: f"[Approve](approve:{x})")
+    df['reject'] = df['id'].apply(lambda x: f"[Reject](reject:{x})")
 
-    return rows
+    return df.to_dict('records')
 
 @app.callback(
-    Output('leave-approval-status', 'children'),
+    Output('approval-status', 'children'),
     Input('leave-approval-table', 'active_cell'),
     State('leave-approval-table', 'data'),
     prevent_initial_call=True
 )
-def process_leave_action(cell, rows):
+def handle_leave_approval(cell, rows):
     if not cell:
         return ""
 
     row = rows[cell['row']]
     leave_id = row['id']
-    col = cell['column_id']
 
-    if col not in ['approve', 'reject']:
-        return ""
-
-    new_status = 'approved' if col == 'approve' else 'rejected'
+    action = cell['column_id']
+    status = 'approved' if action == 'approve' else 'rejected'
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
+    cur = conn.cursor()
+
+    cur.execute("""
         UPDATE leave_requests
-        SET status = %s
-        WHERE id = %s
-    """, (new_status, leave_id))
+        SET status=%s,
+            approved_by='Admin',
+            approved_at=NOW()
+        WHERE id=%s
+    """, (status, leave_id))
+
     conn.commit()
     conn.close()
 
-    return f"Leave {new_status.upper()} for {row['employee']}"
+    return f"Leave {status.upper()} successfully"
 
+@app.callback(
+    Output('leave-status', 'children'),
+    Input('btn-apply-leave', 'n_clicks'),
+    State('leave-type', 'value'),
+    State('leave-date-range', 'start_date'),
+    State('leave-date-range', 'end_date'),
+    State('leave-reason', 'value'),
+    State('session-store', 'data'),
+    prevent_initial_call=True
+)
+def apply_leave(n_clicks, leave_type, start_date, end_date, reason, user):
+    print("🔥 APPLY LEAVE CLICKED")
 
+    if not n_clicks:
+        return dash.no_update
+
+    if not user:
+        return "❌ Session expired. Please login again."
+
+    if not all([leave_type, start_date, end_date, reason]):
+        return "❌ Please fill all fields"
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO leave_requests
+        (employee_email, leave_type, from_date, to_date, reason, status)
+        VALUES (%s, %s, %s, %s, %s, 'Pending')
+    """, (
+        user["email"],
+        leave_type,
+        start_date,
+        end_date,
+        reason
+    ))
+
+    conn.commit()
+    conn.close()
+
+    return "✅ Leave request submitted successfully"
+
+def fetch_approved_leaves():
+    conn = get_db_connection()
+    df = pd.read_sql("""
+        SELECT employee_email, from_date, to_date
+        FROM leave_requests
+        WHERE status='approved'
+    """, conn)
+    conn.close()
+
+    leave_map = {}
+
+    for _, row in df.iterrows():
+        days = pd.date_range(row['from_date'], row['to_date'])
+        leave_map.setdefault(row['employee_email'], set()).update(
+            d.strftime('%Y-%m-%d') for d in days
+        )
+
+    return leave_map
 
 def generate_day_report_excel(json_data, selected_date):
     df = pd.read_json(io.StringIO(json_data), orient='split')

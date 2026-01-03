@@ -1,63 +1,165 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | Attendance System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             display: flex;
             height: 100vh;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
+
         .card {
-            background: #fff;
-            padding: 30px;
-            width: 350px;
-            border-radius: 8px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.15);
-        }
-        h2 { text-align: center; }
-        input, button {
+            background: #ffffff;
+            padding: 40px 30px;
             width: 100%;
-            padding: 10px;
-            margin-top: 10px;
+            max-width: 400px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            text-align: center;
         }
+
+        h2 {
+            color: #333;
+            margin-bottom: 30px;
+            font-weight: 600;
+            font-size: 24px;
+        }
+
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 15px;
+            border: 2px solid #e1e1e1;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            border-color: #764ba2;
+            background-color: #fff;
+            box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.1);
+        }
+
         button {
-            background: #0d6efd;
+            width: 100%;
+            padding: 14px;
+            margin-top: 10px;
+            background: #764ba2;
             color: white;
             border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
             cursor: pointer;
+            transition: background 0.3s ease, transform 0.2s ease;
         }
-        button:hover { background: #084298; }
-        .link {
-            text-align: center;
-            margin-top: 10px;
+
+        button:hover {
+            background: #5b3a82;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .links-container {
+            margin-top: 25px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+
+        /* Alert Styles */
+        .alert {
+            padding: 12px;
+            margin-top: 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            text-align: left;
+        }
+
+        .alert-error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #f87171;
+        }
+
+        .alert-success {
+            background-color: #dcfce7;
+            color: #166534;
+            border: 1px solid #4ade80;
+            margin-bottom: 20px; /* Spacing if it appears above login */
         }
     </style>
 </head>
 <body>
 
 <div class="card">
+    {% if request.args.get('logged_out') %}
+        <div class="alert alert-success">
+            You have been logged out successfully.
+        </div>
+    {% endif %}
+
     <h2>Login</h2>
+    
     <form method="POST">
         <input type="email" name="email" placeholder="Company Email" required>
         <input type="password" name="password" placeholder="Password" required>
-        <button type="submit">Login</button>
+        <button type="submit">Sign In</button>
     </form>
+
     {% if error %}
-    <p style="color:red">{{ error }}</p>
+        <div class="alert alert-error">
+            {{ error }}
+        </div>
     {% endif %}
 
-    <div class="link">
-        <a href="/register">Create Account</a>
+    <div class="links-container">
+        <a href="/forgot-password">Forgot Password?</a>
+        <div>
+            <span>Don't have an account?</span> 
+            <a href="/register">Create Account</a>
+        </div>
     </div>
-    <a href="/forgot-password">Forgot Password?</a>
 </div>
-{% if request.args.get('logged_out') %}
-  <p style="color: green;">You have been logged out successfully.</p>
-{% endif %}
 
 </body>
 </html>
