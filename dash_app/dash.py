@@ -1,6 +1,6 @@
-import dash
+import dash_app.dash as dash
 from flask import session
-from dash import html
+from dash_app.dash import html
 
 def init_dash(flask_app):
     dash_app = dash.Dash(

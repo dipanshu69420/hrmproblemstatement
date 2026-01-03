@@ -1,6 +1,8 @@
 import dash
-from dash import dcc, html, dash_table, ctx
+from dash import dcc, html, dash_table
 from dash.dependencies import Input, Output, State
+from profile.service import build_employee_profile
+from profile.view import employee_profile_layout
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -78,17 +80,30 @@ def get_paid_leave_days(selected_year, selected_month, holidays_list, end_day=No
     total_paid_leave_days = (is_sunday | is_manual_holiday).sum()
     return total_paid_leave_days
 
+# def get_db_connection():
+#     try:
+#         db_connection = mysql.connector.connect(
+#             host=config.DB_HOST,
+#             user=config.DB_USER,
+#             # password=config.DB_PASS,
+#             database=config.DB_NAME
+#         )
+#         return db_connection
+#     except mysql.connector.Error as err:
+#         print(f"Error connecting to DB: {err}")
+#         return None
+
 def get_db_connection():
     try:
-        db_connection = mysql.connector.connect(
+        return mysql.connector.connect(
             host=config.DB_HOST,
             user=config.DB_USER,
-            password=config.DB_PASS,
-            database=config.DB_NAME
+            password=config.DB_PASS,   
+            database=config.DB_NAME,
+            auth_plugin='mysql_native_password'
         )
-        return db_connection
     except mysql.connector.Error as err:
-        print(f"Error connecting to DB: {err}")
+        print("DB CONNECTION ERROR:", err)
         return None
 
 def fetch_data():
@@ -115,6 +130,7 @@ def fetch_data():
     if db_connection:
         try:
             df = pd.read_sql(sql_query, db_connection)
+            print("FETCH DATA ROWS:", len(df))
             return df
         except pd.io.sql.DatabaseError as err:
             print(f"Error fetching data: {err}")
@@ -270,6 +286,7 @@ month_options = [{'label': calendar.month_name[i], 'value': i} for i in range(1,
 year_options_default = [{'label': str(y), 'value': y} for y in range(current_year - 2, current_year + 2)]
 
 def get_dashboard_layout(role='employee', username='User'):
+    print("DASH ROLE:", role)
     if role == 'admin':
         dropdown_value = 'all'
         dropdown_disabled = False
@@ -442,6 +459,51 @@ def get_dashboard_layout(role='employee', username='User'):
             ])
         ])
         tabs_children.append(salary_tab)
+        
+
+    if role == 'admin':
+        profile_tab = dcc.Tab(
+            label='Employee Profile',
+            value='tab-profile',
+            style={'padding': '0px', 'line-height': '40px'},
+            selected_style={'padding': '0px', 'line-height': '40px'},
+            children=[
+                html.Div(
+                    style={'padding': '20px'},
+                    children=[
+                        html.Label("Select Employee", style={'fontWeight': 'bold'}),
+                        dcc.Dropdown(
+                            id='profile-employee-dropdown',
+                            options=[],
+                            placeholder='Select employee',
+                            clearable=True,
+                            style={'width': '300px'}
+                        ),
+                        html.Hr(),
+                        html.Div(id='profile-container')
+                    ]
+                )
+            ]
+        )
+        tabs_children.append(profile_tab)
+
+    elif role == 'employee':
+        profile_tab = dcc.Tab(
+            label='Employee Profile',
+            value='tab-profile',
+            children=[
+                html.Div(
+                    style={'padding': '20px'},
+                    children=[
+                        html.H4(f"Employee: {username}"),
+                        html.Hr(),
+                        html.Div(id='profile-container')
+                    ]
+                )
+            ]
+        )
+        tabs_children.append(profile_tab)
+
 
     hidden_admin_components = []
     if role != 'admin':
@@ -485,6 +547,52 @@ app.layout = get_dashboard_layout(
     username=DEFAULT_USERNAME
 )
 
+
+# @app.callback(
+#     Output("profile-container", "children"),
+#     Input("profile-employee-dropdown", "value")
+# )
+# def load_employee_profile(employee_name):
+#     if not employee_name or employee_name == "all":
+#         return "Select an employee"
+
+#     profile = build_employee_profile(employee_name)
+#     return employee_profile_layout(profile)
+
+@app.callback(
+    Output("profile-container", "children"),
+    Input("profile-employee-dropdown", "value"),
+    prevent_initial_call=True
+)
+def load_admin_profile(employee_name):
+    if not employee_name:
+        return html.P("Select an employee from dropdown")
+
+    profile = build_employee_profile(employee_name)
+
+    if not profile:
+        return html.P("Profile not found")
+
+    return employee_profile_layout(profile)
+
+@app.callback(
+    Output("profile-container", "children"),
+    Input("main-tabs", "value")
+)
+def load_employee_own_profile(tab):
+    if tab != 'tab-profile':
+        return dash.no_update
+
+    if DEFAULT_ROLE != 'employee':
+        return dash.no_update
+
+    profile = build_employee_profile(DEFAULT_USERNAME)
+
+    if not profile:
+        return html.P("Profile not found")
+
+    return employee_profile_layout(profile)
+
 @app.callback(Output('data-store', 'data'),
               [Input('interval-component', 'n_intervals')])
 def update_data_store(n):
@@ -500,54 +608,154 @@ def update_employee_store(n_interval, n_save, n_add):
     return df.to_json(orient='split')
 
 
+# @app.callback(
+#     [Output('month-employee-filter', 'options'),
+#      Output('day-employee-filter', 'options'),
+#      Output('year-dropdown', 'options'),
+#      Output('profile-employee-dropdown', 'options'),
+#      Output('profile-employee-dropdown', 'options'),
+#      Output('salary-year-dropdown', 'options'),
+#      Output('list-employee-names', 'children')],
+#     [Input('data-store', 'data')],
+# )
+
+# @app.callback(
+#     [
+#         Output('month-employee-filter', 'options'),
+#         Output('day-employee-filter', 'options'),
+#         Output('profile-employee-dropdown', 'options'),
+#         Output('year-dropdown', 'options'),
+#         Output('salary-year-dropdown', 'options'),
+#         Output('list-employee-names', 'children')
+#     ],
+#     Input('data-store', 'data')
+# )
+
+
+# def update_dropdowns(json_data):
+#     user_role = DEFAULT_ROLE
+#     user_name = DEFAULT_USERNAME
+#     if user_role == 'employee':
+#         forced_option = [{'label': user_name, 'value': user_name}]
+#         year_options = year_options_default
+#         if json_data:
+#             try:
+#                 df = pd.read_json(io.StringIO(json_data), orient='split')
+#                 df['date'] = pd.to_datetime(df['date'])
+#                 years = df['date'].dt.year.unique()
+#                 all_years = sorted(list(set(list(years) + [current_year, current_year-1, current_year+1])))
+#                 year_options = [{'label': str(y), 'value': y} for y in all_years]
+#             except Exception:
+#                 pass
+#         return forced_option, forced_option, year_options, year_options, []
+
+#     if not json_data:
+#         emp_options = [{'label': 'All Employees', 'value': 'all'}]
+#         return emp_options, emp_options, year_options_default, year_options_default, []
+    
+#     df = pd.read_json(io.StringIO(json_data), orient='split')
+#     df['date'] = pd.to_datetime(df['date'])
+    
+#     employee_names = df['person_name'].unique()
+    
+#     emp_options = [{'label': 'All Employees', 'value': 'all'}]
+#     for name in sorted(employee_names):
+#         emp_options.append({'label': name, 'value': name})
+
+    
+#     datalist_options = [html.Option(value=name) for name in sorted(employee_names)]
+        
+#     years = df['date'].dt.year.unique()
+#     all_years = sorted(list(set(list(years) + [current_year, current_year-1, current_year+1])))
+#     year_options = [{'label': str(y), 'value': y} for y in all_years]
+    
+#     if not year_options:
+#         year_options = year_options_default
+        
+#     return emp_options, emp_options, year_options, year_options, datalist_options
+
 @app.callback(
-    [Output('month-employee-filter', 'options'),
-     Output('day-employee-filter', 'options'),
-     Output('year-dropdown', 'options'),
-     Output('salary-year-dropdown', 'options'),
-     Output('list-employee-names', 'children')],
-    [Input('data-store', 'data')],
+    [
+        Output('month-employee-filter', 'options'),
+        Output('day-employee-filter', 'options'),
+        Output('profile-employee-dropdown', 'options'),
+        Output('year-dropdown', 'options'),
+        Output('salary-year-dropdown', 'options'),
+        Output('list-employee-names', 'children')
+    ],
+    Input('data-store', 'data')
 )
 def update_dropdowns(json_data):
-    user_role = DEFAULT_ROLE
-    user_name = DEFAULT_USERNAME
-    if user_role == 'employee':
-        forced_option = [{'label': user_name, 'value': user_name}]
-        year_options = year_options_default
-        if json_data:
-            try:
-                df = pd.read_json(io.StringIO(json_data), orient='split')
-                df['date'] = pd.to_datetime(df['date'])
-                years = df['date'].dt.year.unique()
-                all_years = sorted(list(set(list(years) + [current_year, current_year-1, current_year+1])))
-                year_options = [{'label': str(y), 'value': y} for y in all_years]
-            except Exception:
-                pass
-        return forced_option, forced_option, year_options, year_options, []
-
     if not json_data:
-        emp_options = [{'label': 'All Employees', 'value': 'all'}]
-        return emp_options, emp_options, year_options_default, year_options_default, []
-    
+        empty = [{'label': 'All Employees', 'value': 'all'}]
+        return empty, empty, [], year_options_default, year_options_default, []
+
     df = pd.read_json(io.StringIO(json_data), orient='split')
+
+    if df.empty:
+        empty = [{'label': 'All Employees', 'value': 'all'}]
+        return empty, empty, [], year_options_default, year_options_default, []
+
     df['date'] = pd.to_datetime(df['date'])
-    
-    employee_names = df['person_name'].unique()
-    
-    emp_options = [{'label': 'All Employees', 'value': 'all'}]
-    for name in sorted(employee_names):
-        emp_options.append({'label': name, 'value': name})
-    
-    datalist_options = [html.Option(value=name) for name in sorted(employee_names)]
-        
-    years = df['date'].dt.year.unique()
-    all_years = sorted(list(set(list(years) + [current_year, current_year-1, current_year+1])))
-    year_options = [{'label': str(y), 'value': y} for y in all_years]
-    
-    if not year_options:
-        year_options = year_options_default
-        
-    return emp_options, emp_options, year_options, year_options, datalist_options
+
+    employee_names = sorted(df['person_name'].unique())
+
+    emp_options = [{'label': 'All Employees', 'value': 'all'}] + [
+        {'label': name, 'value': name} for name in employee_names
+    ]
+
+    profile_options = [
+        {'label': name, 'value': name} for name in employee_names
+    ]
+
+    datalist_options = [html.Option(value=name) for name in employee_names]
+
+    years = sorted(df['date'].dt.year.unique())
+    year_options = [{'label': str(y), 'value': y} for y in years]
+
+    return (
+        emp_options,          
+        emp_options,          
+        profile_options,      
+        year_options,
+        year_options,
+        datalist_options
+    )
+
+
+# def update_dropdowns(json_data):
+#     if not json_data:
+#         empty = [{'label': 'All Employees', 'value': 'all'}]
+#         return empty, empty, [], year_options_default, year_options_default, []
+
+#     df = pd.read_json(io.StringIO(json_data), orient='split')
+#     df['date'] = pd.to_datetime(df['date'])
+
+#     employee_names = sorted(df['person_name'].unique())
+
+#     emp_options = [{'label': 'All Employees', 'value': 'all'}] + [
+#         {'label': name, 'value': name} for name in employee_names
+#     ]
+
+#     profile_options = [
+#         {'label': name, 'value': name} for name in employee_names
+#     ]
+
+#     datalist_options = [html.Option(value=name) for name in employee_names]
+
+#     years = sorted(df['date'].dt.year.unique())
+#     year_options = [{'label': str(y), 'value': y} for y in years]
+
+#     return (
+#         emp_options,        
+#         emp_options,        
+#         profile_options,    
+#         year_options,
+#         year_options,
+#         datalist_options
+#     )
+
+
 
 @app.callback(
     [Output('daily-attendance-gauge', 'figure'),

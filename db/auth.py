@@ -5,7 +5,7 @@ def get_db_connection():
         db_connection = mysql.connector.connect(
             host=config.DB_HOST,
             user=config.DB_USER,
-            password=config.DB_PASS,
+            # password=config.DB_PASS,
             database=config.DB_NAME
         )
         return db_connection
