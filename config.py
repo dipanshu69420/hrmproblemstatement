@@ -15,4 +15,4 @@ SMTP_SERVER="smtp.gmail.com"
 SMTP_PORT=587
 EMAIL_SENDER = "dbharatia09@gmail.com"
 EMAIL_PASSWORD = "axnm cled jgtp rjjf"
-EMAIL_RECIPIENTS = ["dipanshu.isro09@gmail.com","chirag.bharatia@welogicalsolutions.com","sandeep@welogicalsolutions.com"]
+# EMAIL_RECIPIENTS = ["dipanshu.isro09@gmail.com","chirag.bharatia@welogicalsolutions.com","sandeep@welogicalsolutions.com"]

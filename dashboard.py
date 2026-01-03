@@ -17,6 +17,10 @@ import pytz
 import time
 import warnings
 import logging
+from services.hr_services import get_pending_users
+from db.auth import get_db_connection
+from flask import session
+
 
 warnings.filterwarnings("ignore")
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
@@ -25,8 +29,9 @@ logging.getLogger('urllib3').setLevel(logging.ERROR)
 LATE_THRESHOLD_TIME = datetime.time(10, 0, 0)
 LATE_THRESHOLD_STR = "10:00:00"
 HOURS_THRESHOLD = 9.0
-DEFAULT_ROLE = "admin"
-DEFAULT_USERNAME = "Admin"
+# user = session.get("user")
+# user_role = user["role"]
+# user_name = user["name"]
 
 def format_hours(decimal_hours):
     if pd.isna(decimal_hours):
@@ -36,7 +41,6 @@ def format_hours(decimal_hours):
     hours = int(decimal_hours)
     minutes = int((decimal_hours - hours) * 60)
     return f"{hours}h {minutes}m"
-
 
 def get_working_days(selected_year, selected_month, holidays_list, end_day=None):
     month_start_date = date(selected_year, selected_month, 1)
@@ -77,19 +81,6 @@ def get_paid_leave_days(selected_year, selected_month, holidays_list, end_day=No
     is_manual_holiday = (all_days_in_range.strftime('%Y-%m-%d').isin(holidays_set))
     total_paid_leave_days = (is_sunday | is_manual_holiday).sum()
     return total_paid_leave_days
-
-def get_db_connection():
-    try:
-        db_connection = mysql.connector.connect(
-            host=config.DB_HOST,
-            user=config.DB_USER,
-            password=config.DB_PASS,
-            database=config.DB_NAME
-        )
-        return db_connection
-    except mysql.connector.Error as err:
-        print(f"Error connecting to DB: {err}")
-        return None
 
 def fetch_data():
     sql_query = """
@@ -149,6 +140,37 @@ def fetch_employee_monthly_salaries():
             db_connection.close()
             
     return pd.DataFrame(columns=['person_name', 'monthly_salary', 'mobile_no'])
+
+def fetch_pending_users():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT id, person_name, email, role
+        FROM employees
+        WHERE is_hr_approved = 0
+          AND status = 'pending'
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+
+def approve_user_db(user_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE employees
+        SET is_hr_approved = 1,
+            status = 'active'
+        WHERE id = %s
+    """, (user_id,))
+
+    conn.commit()
+    conn.close()
+
 
 def push_to_odoo(row):
     try:
@@ -260,6 +282,8 @@ def auto_sync():
 app = dash.Dash(__name__,
                 external_stylesheets=['https://codepen.io/chriddyp/pen/bWLwgP.css'],
                 title='AtyaInno Attendance Dashboard',
+                server=False,
+                routes_pathname_prefix="/dashboard/",
                 suppress_callback_exceptions=True)
 
 today = date.today()
@@ -268,6 +292,20 @@ current_month = today.month
 
 month_options = [{'label': calendar.month_name[i], 'value': i} for i in range(1, 13)]
 year_options_default = [{'label': str(y), 'value': y} for y in range(current_year - 2, current_year + 2)]
+
+def serve_layout():
+    user = session.get("user")
+    if not user:
+        return html.Div(
+            "Unauthorized. Please login.",
+            style={"padding": "20px", "color": "red"}
+        )
+    return get_dashboard_layout(
+        role=user["role"],
+        username=user["name"]
+    )
+
+app.layout = serve_layout
 
 def get_dashboard_layout(role='employee', username='User'):
     if role == 'admin':
@@ -401,6 +439,50 @@ def get_dashboard_layout(role='employee', username='User'):
     ])
     tabs_children.append(holiday_tab)
 
+    if role == 'employee':
+        leave_tab = dcc.Tab(
+            label='Leave Request',
+            value='tab-leave',
+            style={'padding': '0px', 'line-height': '40px'},
+            selected_style={'padding': '0px', 'line-height': '40px'},
+            children=[
+                html.Div(style={'padding': '20px'}, children=[
+                    html.H3("Apply for Leave"),
+
+                    dcc.DatePickerRange(
+                        id='leave-date-range',
+                        display_format='DD-MM-YYYY'
+                    ),
+
+                    dcc.Textarea(
+                        id='leave-reason',
+                        placeholder='Reason for leave',
+                        style={'width': '100%', 'marginTop': '10px'}
+                    ),
+
+                    html.Button('Submit Leave', id='btn-apply-leave'),
+                    html.Div(id='leave-status', style={'marginTop': '10px'}),
+
+                    html.Hr(),
+
+                    html.H4("My Leave Requests"),
+                    dash_table.DataTable(
+                        id='my-leave-table',
+                        columns=[
+                            {'name': 'From', 'id': 'from_date'},
+                            {'name': 'To', 'id': 'to_date'},
+                            {'name': 'Reason', 'id': 'reason'},
+                            {'name': 'Status', 'id': 'status'},
+                        ],
+                        data=[],
+                        style_cell={'textAlign': 'left'}
+                    )
+                ])
+            ]
+        )
+        tabs_children.append(leave_tab)
+
+
     if role == 'admin':
         salary_tab = dcc.Tab(label='Salary Management', value='tab-salary',
                 style={'padding': '0px', 'line-height': '40px'},
@@ -442,6 +524,49 @@ def get_dashboard_layout(role='employee', username='User'):
             ])
         ])
         tabs_children.append(salary_tab)
+        
+    if role == 'admin':
+        approval_tab = dcc.Tab(
+            label='Approvals',
+            value='tab-approvals',
+            style={'padding': '0px', 'line-height': '40px'},
+            selected_style={'padding': '0px', 'line-height': '40px'},
+            children=[
+                html.Div(style={'padding': '20px'}, children=[
+                    html.H3("User Approval"),
+                    dash_table.DataTable(
+                        id='approval-table',
+                        columns=[
+                            {'name': 'ID', 'id': 'id'},
+                            {'name': 'Name', 'id': 'person_name'},
+                            {'name': 'Email', 'id': 'email'},
+                            {'name': 'Role', 'id': 'role'},
+                            {'name': 'Approve', 'id': 'approve', 'presentation': 'markdown'}
+                        ],
+                        data=[],
+                        style_cell={'textAlign': 'center'},
+                    ),
+                    html.Hr(),
+                    html.H3("Leave Approval"),
+                    dash_table.DataTable(
+                        id='leave-approval-table',
+                        columns=[
+                            {'name': 'Employee', 'id': 'employee'},
+                            {'name': 'From', 'id': 'from_date'},
+                            {'name': 'To', 'id': 'to_date'},
+                            {'name': 'Reason', 'id': 'reason'},
+                            {'name': 'Approve', 'id': 'approve', 'presentation': 'markdown'},
+                            {'name': 'Reject', 'id': 'reject', 'presentation': 'markdown'}
+                        ],
+                        data=[],
+                        style_cell={'textAlign': 'center'}
+                    ),
+
+                    html.Div(id='leave-approval-status', style={'marginTop': '10px'})
+                ])
+            ]
+        )
+        tabs_children.append(approval_tab)
 
     hidden_admin_components = []
     if role != 'admin':
@@ -460,14 +585,25 @@ def get_dashboard_layout(role='employee', username='User'):
             dcc.Dropdown(id='salary-month-dropdown', value=current_month), 
             dcc.Dropdown(id='salary-year-dropdown', value=current_year), 
             dcc.Input(id='salary-exception-days', value=0)
+            
         ]
 
     return html.Div([
         html.Div(style={'display': 'flex', 'justifyContent': 'space-between', 'alignItems': 'center', 'padding': '10px', 'backgroundColor': '#f8f9fa', 'borderBottom': '1px solid #ddd'}, children=[
             html.H4(f"Welcome, {username}", style={'margin': 0}),
-            html.Button("Logout", id='btn-logout', style={'backgroundColor': '#dc3545', 'color': 'white'})
+            html.A(
+                "Logout",
+                href="/logout",
+                style={
+                    "backgroundColor": "#dc3545",
+                    "color": "white",
+                    "padding": "8px 16px",
+                    "borderRadius": "4px",
+                    "textDecoration": "none",
+                    "fontWeight": "bold"
+                }
+            )
         ]),
-        
         dcc.Store(id='data-store'),
         dcc.Store(id='holiday-store'),
         dcc.Store(id='employee-store'),
@@ -476,14 +612,9 @@ def get_dashboard_layout(role='employee', username='User'):
         dcc.Download(id='download-monthwise-xlsx'),
         dcc.Download(id='download-detailed-month-xlsx'),
         dcc.Download(id='download-salary-csv'),
-        
         dcc.Tabs(id='main-tabs', value='tab-dashboard', style={'height': '40px'}, children=tabs_children)
     ])
     
-app.layout = get_dashboard_layout(
-    role=DEFAULT_ROLE,
-    username=DEFAULT_USERNAME
-)
 
 @app.callback(Output('data-store', 'data'),
               [Input('interval-component', 'n_intervals')])
@@ -499,6 +630,49 @@ def update_employee_store(n_interval, n_save, n_add):
     df = fetch_employee_monthly_salaries()
     return df.to_json(orient='split')
 
+@app.callback(
+    Output('approval-table', 'data'),
+    Input('main-tabs', 'value')
+)
+def load_pending_users(tab):
+    if tab != 'tab-approval':
+        return []
+
+    users = fetch_pending_users()
+
+    for u in users:
+        u['approve'] = f"[Approve](approve:{u['id']})"
+
+    return users
+
+@app.callback(
+    Output('approval-status', 'children'),
+    Input('approval-table', 'active_cell'),
+    State('approval-table', 'data'),
+    prevent_initial_call=True
+)
+def approve_user_callback(active_cell, rows):
+    if not active_cell:
+        return ""
+
+    if active_cell['column_id'] == 'approve':
+        row_index = active_cell['row']
+        user_id = rows[row_index]['id']
+
+        approve_user_db(user_id)
+
+        return f"User ID {user_id} approved successfully"
+
+    return ""
+
+@app.callback(
+    Output('dash-redirect', 'href'),
+    Input('btn-logout', 'n_clicks'),
+    prevent_initial_call=True
+)
+def redirect_after_logout(n):
+    session.clear()
+    return "/login?logged_out=1"
 
 @app.callback(
     [Output('month-employee-filter', 'options'),
@@ -506,11 +680,15 @@ def update_employee_store(n_interval, n_save, n_add):
      Output('year-dropdown', 'options'),
      Output('salary-year-dropdown', 'options'),
      Output('list-employee-names', 'children')],
-    [Input('data-store', 'data')],
+    Input('data-store', 'data'),
+    
 )
 def update_dropdowns(json_data):
-    user_role = DEFAULT_ROLE
-    user_name = DEFAULT_USERNAME
+    user = session.get("user")
+    if not user:
+        return [], [], year_options_default, year_options_default, []
+    user_role = user["role"]
+    user_name = user["name"]
     if user_role == 'employee':
         forced_option = [{'label': user_name, 'value': user_name}]
         year_options = year_options_default
@@ -829,6 +1007,126 @@ def update_month_graphs(json_data, holiday_data, selected_month, selected_year, 
     ]
     
     return fig_gauge, fig_att_gauge, fig_pie_hours, table_data, table_columns, style_data_conditional
+
+@app.callback(
+    Output('leave-status', 'children'),
+    Input('btn-apply-leave', 'n_clicks'),
+    State('leave-date-range', 'start_date'),
+    State('leave-date-range', 'end_date'),
+    State('leave-reason', 'value'),
+    prevent_initial_call=True
+)
+def apply_leave(n, start, end, reason):
+    if not all([start, end, reason]):
+        return "Please fill all fields"
+
+    user = session.get("user")
+    if not user:
+        return "Session expired"
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO leave_requests (employee_name, from_date, to_date, reason)
+        VALUES (%s, %s, %s, %s)
+    """, (user['name'], start, end, reason))
+
+    conn.commit()
+    conn.close()
+
+    return "Leave request submitted"
+
+@app.callback(
+    Output('my-leave-table', 'data'),
+    Input('btn-apply-leave', 'n_clicks'),
+    Input('main-tabs', 'value')
+)
+def load_my_leaves(_, tab):
+    if tab != 'tab-leave':
+        return []
+
+    user = session.get("user")
+    if not user:
+        return []
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT from_date, to_date, reason, status
+        FROM leave_requests
+        WHERE employee_name = %s
+        ORDER BY created_at DESC
+    """, (user['name'],))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return rows
+
+@app.callback(
+    Output('leave-approval-table', 'data'),
+    Input('main-tabs', 'value')
+)
+def load_pending_leaves(tab):
+    if tab != 'tab-approvals':
+        return []
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("""
+        SELECT id,
+               employee_name AS employee,
+               from_date,
+               to_date,
+               reason
+        FROM leave_requests
+        WHERE status = 'pending'
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    for r in rows:
+        r['approve'] = f"[Approve](approve:{r['id']})"
+        r['reject'] = f"[Reject](reject:{r['id']})"
+
+    return rows
+
+@app.callback(
+    Output('leave-approval-status', 'children'),
+    Input('leave-approval-table', 'active_cell'),
+    State('leave-approval-table', 'data'),
+    prevent_initial_call=True
+)
+def process_leave_action(cell, rows):
+    if not cell:
+        return ""
+
+    row = rows[cell['row']]
+    leave_id = row['id']
+    col = cell['column_id']
+
+    if col not in ['approve', 'reject']:
+        return ""
+
+    new_status = 'approved' if col == 'approve' else 'rejected'
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE leave_requests
+        SET status = %s
+        WHERE id = %s
+    """, (new_status, leave_id))
+    conn.commit()
+    conn.close()
+
+    return f"Leave {new_status.upper()} for {row['employee']}"
+
+
 
 def generate_day_report_excel(json_data, selected_date):
     df = pd.read_json(io.StringIO(json_data), orient='split')

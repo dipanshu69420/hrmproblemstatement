@@ -1,0 +1,8 @@
+from flask import session, redirect
+
+def login_required(f):
+    def wrapper(*args, **kwargs):
+        if not session.get("user"):
+            return redirect("/login")
+        return f(*args, **kwargs)
+    return wrapper
